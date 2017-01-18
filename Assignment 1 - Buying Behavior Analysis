@@ -1,35 +1,24 @@
-setwd("C:/Users/Garau/OneDrive/BOOTH/Academic_Courses/37105_Data_Science_Mktg/Assignment_1")
+---
+title: "Assignment 1 - Buying Behavior Analysis"
+author: "Team Revolution"
+date: "1/19/2017"
+output: html_document
+---
 
-library(bit64)
+```{r, include = FALSE}
 library(data.table)
+library(bit64)
 library(ggplot2)
 
-load(paste0("purchases_beverages_50_subsample.RData"))
-load(paste0("products_beverages.RData"))
+data_folder    = '/Users/jamesriso/Google Drive/Booth/2016-Q2 Winter/37105-01 Data Science for Marketing/Data'
+purchases_file = 'purchases_beverages_50_subsample.RData'
+products_file  = "products_beverages.RData"
+load(paste0(data_folder, "/", purchases_file)) 
+load(paste0(data_folder, "/", products_file))
 
-
-# sample data from all purchases
-purchases_sub <- purchases[sample(.N, 4000000)]
-
-# grab no. of households and sample 25% of them, then take all data from those households
-# (b/c likely multiple purchases made per household)
-N_households <- length(unique(purchases$household_code))
-N_subsample <- round(.25*N_households)
-household_code_sub <- sample(unique(purchases$household_code), N_subsample)
-purchases_sub_hh <- purchases[household_code %in% household_code_sub]
-
-# saving space because not using the samples
-rm(list=c("purchases_sub", "purchases_sub_hh"))
-
-
-
-## on to the real stuff, I guess
 
 # calculate year corresponding to a purchase date
-# not really sure what this does exactly
 purchases[, year := year(purchase_date)]
-# looks like := is the same as <-, so purchases[, year <- year(purchase_date)]
-# converts the years as integers? I think so
 
 # remove rows with year 2003
 purchases <- purchases[year > 2003]
@@ -40,19 +29,30 @@ products[, category := "Other"]
 products[product_module_code == 1484, category := "CSD"]
 products[product_module_code == 1553, category := "Diet"]
 products[product_module_code == 1487, category := "Water"]
+```
 
+** **
+**Document the number of observations in each category**
+
+```{r}
 table(products[,category])
-# CSD     Diet    Water   Other
-# 24,126  10,267  15,921  58,754
+```
 
+```{r, include = FALSE}
 # merge category, size, unit type, and whether part of multipack with purchase data
 purchases <- merge(purchases, products[, .(upc, upc_ver_uc, category)])
 purchases <- merge(purchases, products[, .(upc, upc_ver_uc, size1_amount, size1_units, multi)])
+```
 
+** **
+**Document the number of observations by unit of measurement**
+
+```{r}
 table(purchases[,size1_units])
-# CT       OZ          QT
-# 234,989  19,268,697  855,140
+```
 
+
+```{r, include = FALSE}
 # get rid of CT data
 purchases <- purchases[size1_units != "CT"]
 
@@ -63,76 +63,89 @@ purchases[size1_units == "QT", volume := (size1_amount/4)*multi]
 
 # number of households in the data
 purchases[, no_households := length(unique(household_code)), by = year]
+```
 
+** **
+**Create and show a table with the number of households by year**
+
+```{r}
 households_per_year <- aggregate(purchases[,no_households], by=list(year=purchases[,year]), FUN="mean")
 households_per_year
-# 2004 21,183
-# 2005 19,432
-# 2006 21,057
-# 2007 32,716
-# 2008 32,275
-# 2009 32,133
-# 2010 32,729
-# 2011 30,785
-# 2012 30,855
-# 2013 31,420
-# 2014 30,517
+```
+
+**Category Level Analysis**
 
 
+```{r, include = FALSE}
 ## Category level analysis
 
 # Create total volume spend and total purchase volume for year year/category combination
 purchases_category <- purchases[, .(spend = sum(total_price_paid-coupon_value),
-                                    purchase_volume = sum(volume*multi), 
-                                    no_households = head(no_households, 1)), 
-                                keyby = .(category, year)]
-
-# purchases_category1 <- purchases[, .(spend = sum(total_price_paid-coupon_value),
-#                                     purchase_volume = sum(volume*multi), 
-#                                     no_households = mode(no_households)), 
-#                                 keyby = .(category, year)]
-
-# purchases_category[1:20]
+                                   purchase_volume = sum(volume*multi), 
+                                   no_households = head(no_households, 1)), 
+                               keyby = .(category, year)]
 
 # calculate per capita spend and purchase volume(gal) for each category
 purchases_category[, per_cap_spend := spend/no_households]
 purchases_category[, per_cap_vol := purchase_volume/no_households]
+```
 
-# plot per capital spend and purchase volume
-ggplot(purchases_category, aes(x=year, y=per_cap_vol, color=category)) + geom_line() + 
-  facet_wrap(~category)
+**Graph the evolution of the yearly per capita purchase volume for all four categories.**
+
+```{r}
+# plot per capita spend
 ggplot(purchases_category, aes(x=year, y=per_cap_spend, color=category)) + geom_line() + 
   facet_wrap(~category)
+# plot per capita purchase volume 
+ggplot(purchases_category, aes(x=year, y=per_cap_vol, color=category)) + geom_line() + 
+  facet_wrap(~category)
 
+```
+
+
+```{r, include=FALSE}
 # normalize each category per cap spend and vol against 2004 per cap spend
 purchases_category[purchases_category[year==2004,], `:=` 
-                   (norm_per_cap_vol=per_cap_vol/i.per_cap_vol, 
+                   (norm_per_cap_vol = per_cap_vol/i.per_cap_vol, 
                      norm_per_cap_spend=per_cap_spend/i.per_cap_spend), 
                    on="category"]
-# graph it
+```
+
+
+**Graphs, normalized as multiples of 2004 values**
+
+```{r}
 ggplot(purchases_category, aes(x=year, y=norm_per_cap_spend, color=category)) + geom_line() + 
   facet_wrap(~category)
 
 ggplot(purchases_category, aes(x=year, y=norm_per_cap_vol, color=category)) + geom_line() + 
   facet_wrap(~category)
+```
 
+** **
+**Discussion**
 
+Movement towards being healthier seems to be working. People are buying way more water. On the contrary, soda, diet soda, and other (juices, etc.) are going down. Spend is up on diet and remains constant on "Other" and "Soda", which suggests that companies are increasing their prices to make up for lost volume.
 
-## Brand-level analysis
+** **
+**Brand-Level Analysis**
+
+```{r, include=FALSE}
 
 # merge brand_descr with purchase data
 purchases <- merge(purchases, products[, .(upc, upc_ver_uc, brand_descr)])
 
 # calculate total dollar spend by each category/brand description 
 brand_summary <- purchases[, .(spend = sum(total_price_paid-coupon_value)),
-                           by = .(category, brand_descr)]
+                          by = .(category, brand_descr)]
+```
 
+```{r}
 # rank brands by total dollar spend in each category separately
 brand_summary[, rank := frankv(spend, order = -1), by = category]
+```
 
-#CSD_brand_summary <- brand_summary[category == "CSD"]
-#CSD_brand_summary1 <- CSD_brand_summary[order(rank)]
-
+```{r, include=FALSE}
 # merge brand ranking into purchases
 # need to set key by brand description AND category because there are blank brand descrs
 # in Water and Diet
@@ -141,20 +154,23 @@ setkey(brand_summary, brand_descr, category)
 
 purchases <- merge(purchases, brand_summary[,.(brand_descr, category, rank)])
 
-
 # Create total volume spend and total purchase volume for year year/brand combination
 purchases_brand <- purchases[rank<=4, .(spend = sum(total_price_paid-coupon_value),
-                                        purchase_volume = sum(volume*multi), 
-                                        no_households = head(no_households, 1)), 
-                             keyby = .(brand_descr, category, year)]
+                                    purchase_volume = sum(volume*multi), 
+                                    no_households = head(no_households, 1)), 
+                                keyby = .(brand_descr, category, year)]
 
 # calculate per capital spend and purchase volume(gal) for each brand
 purchases_brand[, per_cap_spend := spend/no_households]
 purchases_brand[, per_cap_vol := purchase_volume/no_households]
+```
 
-baller_alert <- purchases_brand[order(-per_cap_spend)]
+** **
+**Plot the evolution of brand volume for the top 4 brands, separately for the CSD, diet CSD, and bottled water categories**
 
-# plot per capita purchase volume
+
+*Per Capita*
+```{r}
 ggplot(purchases_brand[category=="CSD"], aes(x=year, y=per_cap_vol, color=brand_descr)) + 
   geom_point() + geom_smooth() + facet_wrap(~brand_descr)
 ggplot(purchases_brand[category=="Diet"], aes(x=year, y=per_cap_vol, color=brand_descr)) + 
@@ -164,28 +180,47 @@ ggplot(purchases_brand[category=="Water"], aes(x=year, y=per_cap_vol, color=bran
 ggplot(purchases_brand[category=="Other"], aes(x=year, y=per_cap_vol, color=brand_descr)) + 
   geom_point() + geom_smooth() + facet_wrap(~brand_descr)
 
+ggplot(purchases_brand[category=="Water"], aes(x=year, y=per_cap_spend, color=brand_descr)) + 
+  geom_point() + geom_smooth() + facet_wrap(~brand_descr, scales="free_y")
+```
+
+*Normalized Per Capita*
+
+```{r,include=FALSE}
 # normalize each brand per cap spend and vol against 2004 per cap spend
 purchases_brand[purchases_brand[year==2004,], `:=` 
-                (norm_per_cap_vol=per_cap_vol/i.per_cap_vol, 
-                  norm_per_cap_spend=per_cap_spend/i.per_cap_spend), 
-                on=c("brand_descr","category")]
+                   (norm_per_cap_vol=per_cap_vol/i.per_cap_vol, 
+                     norm_per_cap_spend=per_cap_spend/i.per_cap_spend), 
+                   on=c("brand_descr", "category")]
+```
 
-# graph it
+```{r}
+
+# graph CSD
 ggplot(purchases_brand[category=="CSD"], aes(x=year, y=norm_per_cap_spend, color=brand_descr)) + 
   geom_point() + geom_smooth() + facet_wrap(~brand_descr)
-ggplot(purchases_brand[category=="Diet"], aes(x=year, y=norm_per_cap_spend, color=brand_descr)) + 
-  geom_point() + geom_smooth() + facet_wrap(~brand_descr)
-ggplot(purchases_brand[category=="Water"], aes(x=year, y=norm_per_cap_spend, color=brand_descr)) + 
-  geom_point() + geom_smooth() + facet_wrap(~brand_descr, scales="free_y")
-ggplot(purchases_brand[category=="Other"], aes(x=year, y=norm_per_cap_spend, color=brand_descr)) + 
+ggplot(purchases_brand[category=="CSD"], aes(x=year, y=norm_per_cap_vol, color=brand_descr)) + 
   geom_point() + geom_smooth() + facet_wrap(~brand_descr)
 
-# graph it
-ggplot(purchases_brand[category=="CSD"], aes(x=year, y=norm_per_cap_vol, color=brand_descr)) + 
+# graph Diet
+ggplot(purchases_brand[category=="Diet"], aes(x=year, y=norm_per_cap_spend, color=brand_descr)) + 
   geom_point() + geom_smooth() + facet_wrap(~brand_descr)
 ggplot(purchases_brand[category=="Diet"], aes(x=year, y=norm_per_cap_vol, color=brand_descr)) + 
   geom_point() + geom_smooth() + facet_wrap(~brand_descr)
+
+# graph Water
+ggplot(purchases_brand[category=="Water"], aes(x=year, y=norm_per_cap_spend, color=brand_descr)) + 
+  geom_point() + geom_smooth() + facet_wrap(~brand_descr)
 ggplot(purchases_brand[category=="Water"], aes(x=year, y=norm_per_cap_vol, color=brand_descr)) + 
-  geom_point() + geom_smooth() + facet_wrap(~brand_descr, scales="free_y")
+  geom_point() + geom_smooth() + facet_wrap(~brand_descr)
+
+# graph Other
+ggplot(purchases_brand[category=="Other"], aes(x=year, y=norm_per_cap_spend, color=brand_descr)) + 
+  geom_point() + geom_smooth() + facet_wrap(~brand_descr)
 ggplot(purchases_brand[category=="Other"], aes(x=year, y=norm_per_cap_vol, color=brand_descr)) + 
   geom_point() + geom_smooth() + facet_wrap(~brand_descr)
+```
+
+**Discuss**
+
+[ TO FILL IN - note for example the decline in juice]
