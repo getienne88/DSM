@@ -1,1 +1,12 @@
 
+
+library(bit64)
+library(data.table)
+library(lfe)
+library(stargazer)
+library(ggplot2)
+
+
+#We first load the brand and store meta data.
+load("./Data/Brands.RData")
+load("./Data/Stores.RData")
