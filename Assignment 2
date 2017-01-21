@@ -1,4 +1,5 @@
 
+
 library(bit64)
 library(data.table)
 library(lfe)
@@ -19,12 +20,12 @@ model_name = "Detergents-Tide"
   #and the top three other “competitor” brands comp_1, comp_2, and comp_3.
   #brands[, rank := frankv(revenue, order = -1), by= product_module_code]
 
+brands[,rank := frankv(revenue, order = -1),by = product_module_code]
 brands2 <- brands[rank<=4]
 brands2[rank==1, brand_name := "own"]
 brands2[rank==2, brand_name := "comp_1"]
 brands2[rank==3, brand_name := "comp_2"]
 brands2[rank==4, brand_name := "comp_3"]
-
 
 #Prepare movement data
   #Load the movement data, and—for better readability—change the variable names 
@@ -32,9 +33,9 @@ brands2[rank==4, brand_name := "comp_3"]
   #Change the data type of the promotion variable from logical to numeric using the as.numeric function. 
   #Finally, merge the new brand_name variable with the movement table.
 
-load("./Data/brand_move_1036_25_subsample.RData")
+load("./Data/brand_move_7012_25_subsample.RData")
 
-# NOTE - MOVE IS BY MODULE, I WILL NEED TO WORK THAT IN TO DO PROPER MERGING DOWN THE LINE
+# NOTE - each module is in its own file - this is just 7012 for now
 
 names(move)[which(names(move)=="units")] <- "quantity"
 names(move)[which(names(move)=="promo_dummy")] <- "promotion"
@@ -47,10 +48,78 @@ key(brands2)
 setkey(move,brand_code_uc,store_code_uc,week_end)
 key(move)
 
+brands2 <- brands2[product_module_code==selected_module]
+
 move2 <-merge(brands2,move,allow=TRUE)
-               
+
+#Remove outliers
+
 isOutlier <- function(x, threshold_bottom, threshold_top) {
   is_outlier = rep(FALSE, times = length(x))
   median_x = median(x, na.rm = TRUE)
-  is_outlier[x/median_x < threshold_bottom | x/median_x > threshold_top] = TRUE return(is_outlier)
+  is_outlier[x/median_x < threshold_bottom | x/median_x > threshold_top] = TRUE 
+  return(is_outlier)
 }
+
+move2[,is_outlier := isOutlier(price,0.34,2.5),by=.(product_module_code,brand_code_uc,store_code_uc)]
+move2[,threshold_bottom := median(price,na.rm=TRUE)*0.34, by=.(product_module_code,brand_code_uc,store_code_uc)]
+move2[,threshold_top := median(price,na.rm=TRUE)*2.5, by=.(product_module_code,brand_code_uc,store_code_uc)]
+
+move3 <- move2[is_outlier==FALSE]
+
+#Reshape the movement data from long to wide format
+
+move4 <- dcast(move3, store_code_uc + week_end ~ brand_name, 
+              value.var = c("quantity", "price", "promotion"))
+
+#Merge store information with the movement data
+
+setkey(move4,store_code_uc,week_end)
+key(move4)
+
+setkey(stores,store_code_uc)
+key(stores)
+
+movestore <- merge(stores,move4,allow=TRUE)
+
+#keep only stores with valid retailer code
+movestore <- movestore[!is.na(retailer_code)]
+
+# Check how many stores there are in the data.
+length(unique(movestore[,store_code_uc]))
+
+#create time trend numbering months
+
+movestore[,year := year(week_end)]
+movestore[,month := month(week_end)]
+minyear = min(movestore[,year])
+  
+movestore[,timetrend := (year-minyear)*12+month]
+
+# retain only complete cases
+
+movestore = movestore[complete.cases((movestore))]
+
+
+#Create histograms of own prices, and the ratios of own prices relative to the price of (sepa- rately) competitor 1, 2, and 3.
+# Write explanation of why price variation is important for regression analysis e.g. demand estimation
+
+
+#Estimate the models using the felm function from the lfe package (consult the corresponding notes on Canvas). Store the outputs in some appropriately named variables (objects).
+
+#Comment on the results. Does controlling for store or time fixed effects make a difference?
+
+
+
+#Controlling for competitor prices
+#Now add the competitor prices, for competitors 1, 2, and 3. Compare the results and comment on the cross-price elasticities.
+
+
+#Controlling for promotions
+#Now add the promotions dummies, first just for the own brand, then for all brands. Compare the results. Did controlling for promotions change the own price elasticity estimate in an expected manner?
+
+#We will use the final model including all variables (I called it fit_promo_comp) as our preferred model. 
+#Also, we save the model output object in a named file in the folder Results. 
+#Make sure to create this folder in the same directory where the source R Markdown is located.
+
+#Profitability analysis
