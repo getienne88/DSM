@@ -1,12 +1,56 @@
 
-
 library(bit64)
 library(data.table)
 library(lfe)
 library(stargazer)
 library(ggplot2)
 
-
 #We first load the brand and store meta data.
 load("./Data/Brands.RData")
 load("./Data/Stores.RData")
+
+
+selected_module = 7012
+model_name = "Detergents-Tide"
+
+
+#Let’s assign each brand a new name using a new variable, brand_name. 
+  #Call the top-ranked (according to total revenue) brand own, 
+  #and the top three other “competitor” brands comp_1, comp_2, and comp_3.
+  #brands[, rank := frankv(revenue, order = -1), by= product_module_code]
+
+brands2 <- brands[rank<=4]
+brands2[rank==1, brand_name := "own"]
+brands2[rank==2, brand_name := "comp_1"]
+brands2[rank==3, brand_name := "comp_2"]
+brands2[rank==4, brand_name := "comp_3"]
+
+
+#Prepare movement data
+  #Load the movement data, and—for better readability—change the variable names 
+  #from units to quantity and from promo_dummy to promotion. 
+  #Change the data type of the promotion variable from logical to numeric using the as.numeric function. 
+  #Finally, merge the new brand_name variable with the movement table.
+
+load("./Data/brand_move_1036_25_subsample.RData")
+
+# NOTE - MOVE IS BY MODULE, I WILL NEED TO WORK THAT IN TO DO PROPER MERGING DOWN THE LINE
+
+names(move)[which(names(move)=="units")] <- "quantity"
+names(move)[which(names(move)=="promo_dummy")] <- "promotion"
+
+move$promotion <- as.numeric(move$promotion)
+
+setkey(brands2,product_module_code,brand_code_uc)
+key(brands2)
+
+setkey(move,brand_code_uc,store_code_uc,week_end)
+key(move)
+
+move2 <-merge(brands2,move,allow=TRUE)
+               
+isOutlier <- function(x, threshold_bottom, threshold_top) {
+  is_outlier = rep(FALSE, times = length(x))
+  median_x = median(x, na.rm = TRUE)
+  is_outlier[x/median_x < threshold_bottom | x/median_x > threshold_top] = TRUE return(is_outlier)
+}
