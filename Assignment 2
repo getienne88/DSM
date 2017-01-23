@@ -101,14 +101,55 @@ movestore[,timetrend := (year-minyear)*12+month]
 movestore = movestore[complete.cases((movestore))]
 
 
-#Create histograms of own prices, and the ratios of own prices relative to the price of (sepa- rately) competitor 1, 2, and 3.
+#Create histograms of own prices, and the ratios of own prices relative to the price of (separately) competitor 1, 2, and 3.
+
+#Price histograms
+
+ggplot(movestore, aes(x = price_own)) +
+   scale_x_continuous(limits=c(0,.3)) +
+    geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
+
+ggplot(movestore, aes(x = price_comp_1)) +
+  scale_x_continuous(limits=c(0,.3)) +
+  geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
+
+ggplot(movestore, aes(x = price_comp_2)) +
+  scale_x_continuous(limits=c(0,.3)) +
+  geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
+
+ggplot(movestore, aes(x = price_comp_3)) +
+  scale_x_continuous(limits=c(0,.3)) +
+  geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
+
+# Own price relative to competitor histograms
+
+#centered on one to make interpretation easier
+
+ggplot(movestore, aes(x = price_own/price_comp_1)) +
+  scale_x_continuous(limits=c(-1,3)) +
+  geom_histogram(binwidth = .1, color = "navyblue", fill = "lightblue1")
+
+ggplot(movestore, aes(x = price_own/price_comp_2)) +
+  scale_x_continuous(limits=c(-1,3)) +
+  geom_histogram(binwidth = .1, color = "navyblue", fill = "lightblue1")
+
+ggplot(movestore, aes(x = price_own/price_comp_3)) +
+  scale_x_continuous(limits=c(-1,3)) +
+  geom_histogram(binwidth = .1, color = "navyblue", fill = "lightblue1")
+
+
 # Write explanation of why price variation is important for regression analysis e.g. demand estimation
 
+"Price variation is important to regression analysis because the regression is fundamentally a tool to quantify how different variables vary
+with one another. If we never observed price changes with one or more of the brands, we would have no data allowing us to understand how the variable 
+are linked and the analysis would lack explanatory power."
 
-#Estimate the models using the felm function from the lfe package (consult the corresponding notes on Canvas). Store the outputs in some appropriately named variables (objects).
+
+#Estimate the models using the felm function from the lfe package (consult the corresponding notes on Canvas).
+#Store the outputs in some appropriately named variables (objects).
+
 
 #Comment on the results. Does controlling for store or time fixed effects make a difference?
-
 
 
 #Controlling for competitor prices
@@ -118,8 +159,12 @@ movestore = movestore[complete.cases((movestore))]
 #Controlling for promotions
 #Now add the promotions dummies, first just for the own brand, then for all brands. Compare the results. Did controlling for promotions change the own price elasticity estimate in an expected manner?
 
+
 #We will use the final model including all variables (I called it fit_promo_comp) as our preferred model. 
 #Also, we save the model output object in a named file in the folder Results. 
 #Make sure to create this folder in the same directory where the source R Markdown is located.
 
+
 #Profitability analysis
+
+#conitnues
