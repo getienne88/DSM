@@ -61,8 +61,12 @@ isOutlier <- function(x, threshold_bottom, threshold_top) {
   return(is_outlier)
 }
 
-move2[,is_outlier := isOutlier(price,0.34,2.5),by=.(product_module_code,brand_code_uc,store_code_uc)]
-move2[,threshold_bottom := median(price,na.rm=TRUE)*0.34, by=.(product_module_code,brand_code_uc,store_code_uc)]
+move2[,is_outlier := isOutlier(price,0.35,2.5),by=.(product_module_code,brand_code_uc,store_code_uc)]
+
+#move2[,is_outlierKS := isOutlier(price,0.35,2.5),on=.(product_module_code,brand_code_uc,store_code_uc)]
+#move2[,check := move2[,is_outlier]==move2[,is_outlierKS]]
+
+move2[,threshold_bottom := median(price,na.rm=TRUE)*0.35, by=.(product_module_code,brand_code_uc,store_code_uc)]
 move2[,threshold_top := median(price,na.rm=TRUE)*2.5, by=.(product_module_code,brand_code_uc,store_code_uc)]
 
 move3 <- move2[is_outlier==FALSE]
@@ -148,6 +152,17 @@ are linked and the analysis would lack explanatory power."
 #Estimate the models using the felm function from the lfe package (consult the corresponding notes on Canvas).
 #Store the outputs in some appropriately named variables (objects).
 
+fit1 = felm(log(1+quantity_own) ~ log(price_own), data = movestore)
+fit1
+
+fit2 = felm(log(1+quantity_own) ~ log(price_own) | store_code_uc, data = movestore)
+fit2
+
+fit3 = felm(log(1+quantity_own) ~ log(price_own) | store_code_uc + x^2, data = movestore)
+fit3
+
+fit4 = felm(log(1+quantity_own) ~ log(price_own) | store_code_uc + timetrend, data = movestore)
+fit4
 
 #Comment on the results. Does controlling for store or time fixed effects make a difference?
 
