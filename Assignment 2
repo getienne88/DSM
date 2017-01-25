@@ -1,25 +1,39 @@
+---
+title: "Assignment 2 - Base Pricing Analysis and Price Elasticity Estimation"
+author: "Team Revolution (Beslic, Etienne, Riso, Stonehill)"
+date: "1/26/2017"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
 
 
+```{r, include = FALSE}
 library(bit64)
 library(data.table)
 library(lfe)
 library(stargazer)
 library(ggplot2)
 
-#We first load the brand and store meta data.
-load("./Data/Brands.RData")
-load("./Data/Stores.RData")
+data_folder = 'C:/Users/Garau/OneDrive/BOOTH/Academic_Courses/37105_Data_Science_Mktg/Assignment_2'
 
+brands_file = 'Brands.RData'
+stores_file  = 'Stores.Rdata'
+load(paste0(data_folder, "/", brands_file)) 
+load(paste0(data_folder, "/", stores_file))
+
+#load("./Brands.RData")
+#load("./Stores.Rdata")
 
 selected_module = 7012
 model_name = "Detergents-Tide"
+#selected_module = 1036
+#model_name = "Lemon-Lime"
+#selected_module = 1040
+#model_name = "Orange-Juice"
 
-
-#Let’s assign each brand a new name using a new variable, brand_name. 
-  #Call the top-ranked (according to total revenue) brand own, 
-  #and the top three other “competitor” brands comp_1, comp_2, and comp_3.
-  #brands[, rank := frankv(revenue, order = -1), by= product_module_code]
-
+#rerank by brand revenue
 brands[,rank := frankv(revenue, order = -1),by = product_module_code]
 brands2 <- brands[rank<=4]
 brands2[rank==1, brand_name := "own"]
@@ -27,159 +41,220 @@ brands2[rank==2, brand_name := "comp_1"]
 brands2[rank==3, brand_name := "comp_2"]
 brands2[rank==4, brand_name := "comp_3"]
 
-#Prepare movement data
-  #Load the movement data, and—for better readability—change the variable names 
-  #from units to quantity and from promo_dummy to promotion. 
-  #Change the data type of the promotion variable from logical to numeric using the as.numeric function. 
-  #Finally, merge the new brand_name variable with the movement table.
+#load("./brand_move_1036_25_subsample.RData")
+#load("./brand_move_1040_25_subsample.RData")
+#load("./brand_move_7012_25_subsample.RData")
+subsample = 'brand_move_7012_25_subsample.RData'
+load(paste0(data_folder, "/", subsample))
 
-load("./Data/brand_move_7012_25_subsample.RData")
 
-# NOTE - each module is in its own file - this is just 7012 for now
+#rename units to quantity and promo_dummy to promotion
+setnames(move, c("units","promo_dummy"), c("quantity","promotion"))[]
 
-names(move)[which(names(move)=="units")] <- "quantity"
-names(move)[which(names(move)=="promo_dummy")] <- "promotion"
+#change promotion to numeric
+move <- move[, promotion := as.numeric(promotion)]
 
-move$promotion <- as.numeric(move$promotion)
+# Merge brand_name with move
+setkey(move,brand_code_uc)
+setkey(brands2,brand_code_uc)
+move <- merge(move,brands2[, .(brand_code_uc,brand_name)])
 
-setkey(brands2,product_module_code,brand_code_uc)
-key(brands2)
-
-setkey(move,brand_code_uc,store_code_uc,week_end)
-key(move)
-
-brands2 <- brands2[product_module_code==selected_module]
-
-move2 <-merge(brands2,move,allow=TRUE)
-
-#Remove outliers
-
+# Outlier finder fcn
 isOutlier <- function(x, threshold_bottom, threshold_top) {
   is_outlier = rep(FALSE, times = length(x))
   median_x = median(x, na.rm = TRUE)
-  is_outlier[x/median_x < threshold_bottom | x/median_x > threshold_top] = TRUE 
+  is_outlier[x/median_x < threshold_bottom | x/median_x > threshold_top] = TRUE
   return(is_outlier)
 }
 
-move2[,is_outlier := isOutlier(price,0.35,2.5),by=.(product_module_code,brand_code_uc,store_code_uc)]
+#Find outliers
+move <- move[, isoutlier:= isOutlier(price, 0.35, 2.5), by= .(brand_code_uc,store_code_uc)]
+move_outliers <- move[isoutlier == "TRUE"]
+nrow(move_outliers)
 
-#move2[,is_outlierKS := isOutlier(price,0.35,2.5),on=.(product_module_code,brand_code_uc,store_code_uc)]
-#move2[,check := move2[,is_outlier]==move2[,is_outlierKS]]
+#Remove Outliers
+move <- move[isoutlier == "FALSE"]
 
-move2[,threshold_bottom := median(price,na.rm=TRUE)*0.35, by=.(product_module_code,brand_code_uc,store_code_uc)]
-move2[,threshold_top := median(price,na.rm=TRUE)*2.5, by=.(product_module_code,brand_code_uc,store_code_uc)]
+# Reshape movement data
+move = dcast(move, store_code_uc + week_end ~ brand_name, value.var = c("quantity", "price", "promotion"))
+head(move)
 
-move3 <- move2[is_outlier==FALSE]
-
-#Reshape the movement data from long to wide format
-
-move4 <- dcast(move3, store_code_uc + week_end ~ brand_name, 
-              value.var = c("quantity", "price", "promotion"))
-
-#Merge store information with the movement data
-
-setkey(move4,store_code_uc,week_end)
-key(move4)
-
+setkey(move,store_code_uc)
 setkey(stores,store_code_uc)
-key(stores)
 
-movestore <- merge(stores,move4,allow=TRUE)
+stores <- stores[is.na(retailer_code) == "FALSE"]
+#stores <- stores[retailer_code != "NA"]
+move <- merge(move,stores[, .(store_code_uc,retailer_code,SMM_code,SMM_description)])
 
-#keep only stores with valid retailer code
-movestore <- movestore[!is.na(retailer_code)]
+move[,year := year(week_end)]
+move[,month := month(week_end)]
+minyear = min(move[,year])
+move[,timetrend := (year-minyear)*12+month]
 
-# Check how many stores there are in the data.
-length(unique(movestore[,store_code_uc]))
+move <- move[complete.cases((move))]
 
-#create time trend numbering months
+```
 
-movestore[,year := year(week_end)]
-movestore[,month := month(week_end)]
-minyear = min(movestore[,year])
-  
-movestore[,timetrend := (year-minyear)*12+month]
+** **
+**Price Histograms**
 
-# retain only complete cases
-
-movestore = movestore[complete.cases((movestore))]
-
-
-#Create histograms of own prices, and the ratios of own prices relative to the price of (separately) competitor 1, 2, and 3.
-
+```{r echo=FALSE, results='hide',message=FALSE}
 #Price histograms
-
-ggplot(movestore, aes(x = price_own)) +
-   scale_x_continuous(limits=c(0,.3)) +
-    geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
-
-ggplot(movestore, aes(x = price_comp_1)) +
+ggplot(move, aes(x = price_own)) +
   scale_x_continuous(limits=c(0,.3)) +
-  geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
-
-ggplot(movestore, aes(x = price_comp_2)) +
-  scale_x_continuous(limits=c(0,.3)) +
-  geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
-
-ggplot(movestore, aes(x = price_comp_3)) +
-  scale_x_continuous(limits=c(0,.3)) +
-  geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1")
+  geom_histogram(binwidth = .01, color = "navyblue", fill = "lightblue1") +
+  labs(title = "Own Price Histogram")
 
 # Own price relative to competitor histograms
 
-#centered on one to make interpretation easier
+ggplot(move, aes(x = price_own/price_comp_1)) +
+  scale_x_continuous(limits=c(0,4)) +
+  geom_histogram(binwidth = .05, color = "navyblue", fill = "lightblue1") +
+  labs(title = "Competition 1 Relative Histogram")
 
-ggplot(movestore, aes(x = price_own/price_comp_1)) +
-  scale_x_continuous(limits=c(-1,3)) +
-  geom_histogram(binwidth = .1, color = "navyblue", fill = "lightblue1")
+ggplot(move, aes(x = price_own/price_comp_2)) +
+  scale_x_continuous(limits=c(0,4)) +
+  geom_histogram(binwidth = .05, color = "navyblue", fill = "lightblue1") +
+  labs(title = "Competition 2 Relative Histogram")
 
-ggplot(movestore, aes(x = price_own/price_comp_2)) +
-  scale_x_continuous(limits=c(-1,3)) +
-  geom_histogram(binwidth = .1, color = "navyblue", fill = "lightblue1")
+ggplot(move, aes(x = price_own/price_comp_3)) +
+  scale_x_continuous(limits=c(0,4)) +
+  geom_histogram(binwidth = .05, color = "navyblue", fill = "lightblue1") +
+  labs(title = "Competition 3 Relative Histogram")
 
-ggplot(movestore, aes(x = price_own/price_comp_3)) +
-  scale_x_continuous(limits=c(-1,3)) +
-  geom_histogram(binwidth = .1, color = "navyblue", fill = "lightblue1")
+```
+
+```{r, include = FALSE}
+
+fit_base <- felm(log(1+quantity_own) ~ log(price_own), data = move) #Own Price
+fit_store_FE <- felm(log(1+quantity_own) ~ log(price_own) | store_code_uc, data = move) #Store Fixed Effect
+fit_trend <- felm(log(1+quantity_own) ~ log(price_own) + timetrend | store_code_uc, data = move ) #Trend Effect
+fit_month_FE <- felm(log(1+quantity_own) ~ log(price_own) | store_code_uc + timetrend , data = move ) #Trend Month Fixed Effect
+```
+
+**Model Estimates**
+
+```{r echo=FALSE, message=FALSE}
+stargazer(fit_base, fit_store_FE, fit_trend, fit_month_FE,
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Base", "Store FE", "Trend", "Store + year/month FE"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+```
+** **
+
+The base model tells us that if our own price is the only factor that affects our sales, for a 1% increase in our own price there is a 6.9% decrease in sales volume. Only 41% of the variation in sales is explained by this model. Therefore there are most likely other significant factors and consumers are probably not as elastic as this model predicts.
+
+The store fixed effect model accounts for 82.3% of the variation in sales volume. It tells us that when you account for the specific store, a 1% increase in our price correlates with a 5.6% decrease in sales. The regression also tells us that store fixed effect is a statistically significant factor at 0.01 level.
+
+The trend effect model accounts for 83% of the variation in sales volume. Although this is only a 0.7% improvement, the trend effect is deemed statistically significant at the 0.01 level. It tells us that a 1% increase in our price correlates with a 5.8% decrease in sales. The time trend effect leads to an additional 0.009% decrease in sales. 
+
+The year/month fixed effect model accounts for 83.2% of the variation in sales. It is also deemed statistically significant. In this model, a 1% increase in our price correlates with a 5.8% decrease in sales. 
+Controlling for store and time fixed effects does make a difference.
+
+** **
+
+```{r, include = FALSE}
+#keep only month fixed effect regression
+rm(fit_base, fit_store_FE, fit_trend)
+
+#add all 3 competitor prices
+fit_month_FE_4 <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp_1) + log(price_comp_2) + log(price_comp_3) | store_code_uc + timetrend , data = move )
+```
+
+**Competitor Prices Model**
+
+```{r echo=FALSE,message=FALSE}
+stargazer(fit_month_FE, fit_month_FE_4,
+          type = "text",
+          column.labels = c("Base", "Store FE", "Trend", "Store + year/month FE"),
+          dep.var.labels.include = FALSE)
+```
+** **
+
+Competitor prices have a statistically significant effect on our own sales volume. A 1% increase in price of competitor 1 increases our sales by 0.60%. A 1% increase in price of competitor 2 increases our sales by 0.12%. A 1% increase in price of competitor 3 increases our sales by 0.15%. Competitor 1 price has the highest cross-price elasticity, while competitor 3 has an unexpectedly slightly higher cross-price elasticity than competitor 2.
+
+** **
+
+```{r, include = FALSE}
+move <- move[, promotion_comp_1 := as.numeric(promotion_comp_1)]
+move <- move[, promotion_comp_2 := as.numeric(promotion_comp_2)]
+move <- move[, promotion_comp_3 := as.numeric(promotion_comp_3)]
+move <- move[, promotion_own := as.numeric(promotion_own)]
 
 
-# Write explanation of why price variation is important for regression analysis e.g. demand estimation
+fit_promo_own <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp_1) + log(price_comp_2) + log(price_comp_3) 
+                      +  promotion_own | store_code_uc + timetrend , data = move )
+#getfe(fit_month_ownpromo)
+fit_promo_comp <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp_1) + log(price_comp_2) + log(price_comp_3)
+                      + promotion_own + promotion_comp_1 + promotion_comp_2
+                      + promotion_comp_3 | store_code_uc + timetrend , data = move )
+#getfe(fith_month_allpromos)
 
-"Price variation is important to regression analysis because the regression is fundamentally a tool to quantify how different variables vary
-with one another. If we never observed price changes with one or more of the brands, we would have no data allowing us to understand how the variable 
-are linked and the analysis would lack explanatory power."
+```
+
+**Promotions Model**
+
+```{r echo=FALSE,message=FALSE}
+stargazer(fit_month_FE_4, fit_promo_own, fit_promo_comp,
+          type = "text",
+          column.labels = c("Base", "ownpromo", "allpromos"),
+          dep.var.labels.include = FALSE)
+```
+
+** **
+
+When we added promotion for our own brand, buyers became less elastic. This is expected because when the item is promoted people are more likely to buy it as they get more exposure to it. This added exposure usually leads to a decrease in price sensitivity. However, we were surpised to see that when our competitors have promotions our buyers still became less elastic. This may be due to the fact that a promotion increases exposure and demand for the entire category. 
+
+** **
+
+```{r, include = FALSE}
+save(fit_promo_comp, file = paste0("./Results/fit_", model_name, ".RData"))
+#summary_promo_comp = summary(fit_promo_comp)
+```
+
+**2013 Profitability Analysis**
+
+```{r, include = FALSE}
+source("./predict.felm.R")
+
+move2013 <- move[year == 2013]
+
+gross_margin = 0.38
+retail_margin = 0.18
+cost = (1-gross_margin)*(1-retail_margin)*mean(move$price_own)
+percentage_delta = seq(-0.1, 0.1, 0.02)
 
 
-#Estimate the models using the felm function from the lfe package (consult the corresponding notes on Canvas).
-#Store the outputs in some appropriately named variables (objects).
+move2013[,base_price := price_own]
 
-fit1 = felm(log(1+quantity_own) ~ log(price_own), data = movestore)
-fit1
+predictProfit <- function(fit, move_DT, price, cost, retail_margin) {
+  Q      = predict.felm(fit, move_DT)
+  profit = (exp(Q)-1)*(price*(1-retail_margin) - cost)
+  return(sum(profit))
+}
 
-fit2 = felm(log(1+quantity_own) ~ log(price_own) | store_code_uc, data = movestore)
-fit2
+base_profit <- predictProfit(fit_promo_comp, move2013, move2013[,price_own], cost, retail_margin)
 
-fit3 = felm(log(1+quantity_own) ~ log(price_own) | store_code_uc + x^2, data = movestore)
-fit3
+profit_v <- NULL
 
-fit4 = felm(log(1+quantity_own) ~ log(price_own) | store_code_uc + timetrend, data = movestore)
-fit4
+for ( i in percentage_delta ){
+  move2013[,price_own:=base_price+base_price*i]
+  profit_v <- c(profit_v,predictProfit(fit_promo_comp, move2013, move2013[,price_own], cost, retail_margin))
+}
 
-#Comment on the results. Does controlling for store or time fixed effects make a difference?
+profit_v
+```
 
+```{r echo = FALSE, message = FALSE}
+# plot profits
+par(mfrow=c(1,2))
+plot(percentage_delta,profit_v, main = "2013 Predicted Profits", xlab = "% change in price", ylab = "profit level")
+plot(percentage_delta,profit_v/base_profit, main = "2013 Predicted Profit Ratios", xlab = "% change in price", ylab = "profit ratio")
 
-#Controlling for competitor prices
-#Now add the competitor prices, for competitors 1, 2, and 3. Compare the results and comment on the cross-price elasticities.
+```
 
-
-#Controlling for promotions
-#Now add the promotions dummies, first just for the own brand, then for all brands. Compare the results. Did controlling for promotions change the own price elasticity estimate in an expected manner?
-
-
-#We will use the final model including all variables (I called it fit_promo_comp) as our preferred model. 
-#Also, we save the model output object in a named file in the folder Results. 
-#Make sure to create this folder in the same directory where the source R Markdown is located.
-
-
-#Profitability analysis
-
-#conitnues
+```{r, include = FALSE}
+#risosucks <- predictProfit(fit_promo_comp, move2013, move2013[,price_own], cost, retail_margin)
+#kaseysucks <- sum(move2013[,quantity_own]*(move2013[,price_own]*(1-retail_margin) - cost))
