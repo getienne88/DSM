@@ -168,7 +168,7 @@ fit_month_FE_4 <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp_1) 
 ```{r echo=FALSE,message=FALSE}
 stargazer(fit_month_FE, fit_month_FE_4,
           type = "text",
-          column.labels = c("Base", "Store FE", "Trend", "Store + year/month FE"),
+          column.labels = c("Own Price", "Competitor Price"),
           dep.var.labels.include = FALSE)
 ```
 ** **
