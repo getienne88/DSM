@@ -15,6 +15,7 @@ table((products[is_PL==TRUE,brand_descr]))
 products <- products[product_module_descr != "MAGNET DATA" & is.na(department_code) == FALSE & department_descr != "GENERAL MERCHANDISE"]
 
 # load purchase data and do calculations and shit
+set.seed(1234)
 container = list()
 index = 1
 
@@ -52,4 +53,4 @@ for (yr in 2004:2014) {
 
 # get it all into one data table
 PL_purchases <- rbindlist(container)
-PL_purchases2 <- PL_purchases[complete.cases(PL_purchases)]
+PL_purchases <- PL_purchases[complete.cases(PL_purchases)]
