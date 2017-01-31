@@ -12,11 +12,7 @@ table(products[,is_PL])
 table((products[is_PL==TRUE,brand_descr]))
 
 # get rid of products data for General Merch dept, Magnet Data, and products w/o dept code
-products2 <- products[product_module_descr != "MAGNET DATA"]
-products3 <- products2[is.na(department_code) == FALSE]
-products4 <- products3[department_descr != "GENERAL MERCHANDISE"]
-products_orig <- products
-products <- products4
+products <- products[product_module_descr != "MAGNET DATA" & is.na(department_code) == FALSE & department_descr != "GENERAL MERCHANDISE"]
 
 # load purchase data and do calculations and shit
 container = list()
