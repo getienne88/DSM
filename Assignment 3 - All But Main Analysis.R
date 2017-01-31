@@ -97,6 +97,7 @@ panelists[household_income == "$70,000-$99,999", income := 85000]
 panelists[household_income == "$100,000 - $124,999", income := 112500]
 panelists[household_income == "$125,000 - $149,999", income := 132500]
 panelists[household_income == "$150,000 - $199,999", income := 175000]
+panelists[household_income == "$100,000 + ", income := 112500]
 panelists[household_income == "$200,000 + ", income := 250000]
 
 # change any income above $100k to $112,500 because info only exists for a few years within
@@ -168,7 +169,7 @@ load("Zillow-Data.RData")
 
 # rename panelists columns "panel_year" to "year" and "panelist_zip_code" to "zip_code" for
 # consistency
-panelists[, `:=` (year = panel_year, zip_code = panelist_zip_code)]
+setnames(panelists, c("panel_year","panelist_zip_code"), c("year","zip_code"))
 
 # first merge panelist data with private label data
 # shared columns = household_code, year
@@ -207,6 +208,7 @@ share_DT[, perc_share := perc_share*100]
 # Graph (histogram) distribution of private label shares across households per year (mean of mos)
 pl_share_dist <- share_DT[,.(shares = mean(perc_share)), by=.(household_code, year)]
 summary(pl_share_dist[,shares])
+sd(pl_share_dist[,shares])
 ggplot(data=pl_share_dist, aes(shares)) + geom_histogram(binwidth = 1)
 
 
@@ -229,6 +231,10 @@ ggplot(data=share_month, aes(y=shares, x=date)) +
 # a huge drop from Dec 2011 to Jan 2012. Was there some translation error? Maybe when shifting
 # the income level or something? Except the income was shifting by 2 years, and this is a 3-year
 # shift (if that's what it is at all).
+
+# Garaudy: I think that there's a delay to when people react to the recession. So even though the official
+# recession ended in 2009, main street was still hurting and people take time to go back to old habits.
+# 2012 drop may coincide with Obama reelection and average people's incomes finally return to normal?
 
 
 # Change in home values
