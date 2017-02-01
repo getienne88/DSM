@@ -1,32 +1,26 @@
-### Data Preparation
-
-library(data.table)
 library(bit64)
+library(data.table)
 
-load("Products.RData")
+data_folder = 'C:/Users/Garau/OneDrive/BOOTH/Academic_Courses/37105_Data_Science_Mktg/Assignment_3'
 
-# distinguish between control and non-control bands
-products[, is_PL := brand_descr %like% "CTL BR"]
-table(products[,is_PL])
-# TRUE       FALSE
-# 1,031,950  2,910,990
+products_file = 'Products.RData'
+load(products_file)
 
-table((products[is_PL==TRUE,brand_descr]))
+products <- products[, is_PL := brand_descr %like% "CTL BR"]
+table(products[, is_PL])
 
 # get rid of products data for General Merch dept, Magnet Data, and products w/o dept code
-products2 <- products[product_module_descr != "MAGNET DATA"]
-products3 <- products2[is.na(department_code) == FALSE]
-products4 <- products3[department_descr != "GENERAL MERCHANDISE"]
-products_orig <- products
-products <- products4
+products <- products[product_module_descr != "MAGNET DATA" & is.na(department_code) == FALSE & department_descr != "GENERAL MERCHANDISE"]
+
 
 # load purchase data and do calculations and shit
+set.seed(1234)
 container = list()
 index = 1
 
 for (yr in 2004:2014) {
   
-  load(paste("purchases_", yr, ".RData", sep=""))
+  load(paste0("purchases_", yr, ".RData", sep=""))
   
   # add year and month variables
   purchases[, `:=` (year = year(purchase_date), month = month(purchase_date))]
@@ -38,7 +32,7 @@ for (yr in 2004:2014) {
   
   # calculate total dollar spend for private and other by household/year/month
   purchases_PL <- purchases[, .(spend = sum(total_price_paid-coupon_value)), 
-                                  keyby = .(is_PL, household_code, year, month)]
+                            keyby = .(is_PL, household_code, year, month)]
   
   # convert to percentage shares
   purchases_total <- purchases[, .(total = sum(total_price_paid-coupon_value)),
@@ -53,15 +47,16 @@ for (yr in 2004:2014) {
   container[[index]] = purchases_PL
   index <- index + 1
   rm(purchases_PL, purchases_total, purchases)
+  
 }
 
 # get it all into one data table
 PL_purchases <- rbindlist(container)
 PL_purchases <- PL_purchases[complete.cases(PL_purchases)]
+
+#Save PL_Purchases
+save(PL_purchases, file = paste0("PL_purchases.RData"))
 rm(container)
-
-setkey(PL_purchases, household_code, year, month)
-
 
 
 
@@ -72,11 +67,10 @@ library(lfe)
 library(ggplot2)
 library(stargazer)
 
+load("./PL_purchases.RData")
 
-
-## Prep Household Data
-
-load("panelists.RData")
+load("./panelists.RData")
+names(panelists)
 
 # translate income level factors to numerics
 panelists[household_income == "-$5000", income := 2500]
@@ -104,7 +98,6 @@ panelists[household_income == "$200,000 + ", income := 250000]
 # the data (want to be consistent across all years)
 panelists[income >= 100000, income := 112500]
 
-
 # income is shifted by 2 years because of how Nielsen collected data -- need to associate with
 # correct year
 
@@ -122,7 +115,6 @@ table(panelists[,female_head_employment == "Not Employed for Pay"])
 # TRUE     FALSE
 # 234,153  373,311
 
-
 # recode age, unemployed, and education variables to reflect only 1 head of household
 
 # note where household head is female
@@ -130,22 +122,20 @@ panelists[, female_head := male_head_age == "No Such Head"]
 
 # set head of hh age by male head except when head is female
 panelists[, age := male_head_birth]
-panelists[female_head == TRUE,
-          age := female_head_birth]
+panelists[female_head == TRUE, age := female_head_birth]
 
-# convert age from character string of birth date to numeric by extracting year from string 
+# convert age from character string of birth year to numeric by extracting year from string 
 # and subtracting it from panel year
+head(panelists$female_head_birth)
 panelists[, age := panel_year - as.numeric(substr(age, 1, 4))]
 
 # set unemployed by male head except when head is female
 panelists[, unemployed := male_head_employment == "Not Employed for Pay"]
-panelists[female_head == TRUE,
-          unemployed := female_head_employment == "Not Employed for Pay"]
+panelists[female_head == TRUE, unemployed := female_head_employment == "Not Employed for Pay"]
 
 # set education by male head except when head is female
 panelists[, education := male_head_education]
-panelists[female_head == TRUE,
-          education := female_head_education]
+panelists[female_head == TRUE, education := female_head_education]
 
 # add variable size that converts household_size from word string to numeric
 panelists[household_size %like% "Single", size := 1]
@@ -160,9 +150,7 @@ panelists[household_size %like% "Nine", size := 9]
 
 # add binary variable has_children
 panelists[,has_children := 1]
-panelists[age_and_presence_of_children == "No Children Under 18", has_children := 0] 
-
-
+panelists[age_and_presence_of_children == "No Children Under 18", has_children := 0]
 
 ## Merge Zillow data, panelists data, and private label data (PL_purchases)
 load("Zillow-Data.RData")
@@ -171,25 +159,24 @@ load("Zillow-Data.RData")
 # consistency
 setnames(panelists, c("panel_year","panelist_zip_code"), c("year","zip_code"))
 
+
 # first merge panelist data with private label data
 # shared columns = household_code, year
 # use panelists columns: income, unemployed, education, age, size, has_children, female_head,
 # marital_status, race, hispanic_origin (all former to be used in regression), zip_code,
 # dma_code, and projection_factor
-key(PL_purchases)
-setkey(panelists, household_code, year)
-key(panelists)
 
-share_DT <- merge(PL_purchases, panelists[,.(household_code, year, income, unemployed, education,
-                                             age, size, has_children, female_head, marital_status,
-                                             race, hispanic_origin, zip_code, dma_code, projection_factor)])
+intersect(names(PL_purchases),names(panelists)) #Find what column names 2 datasets have in common
+setkey(PL_purchases, household_code, year)
+setkey(panelists,household_code, year)
+share_DT <- merge(PL_purchases,panelists[,.(household_code,year,income,unemployed,education
+                                            ,age,size,has_children,female_head,marital_status,race
+                                            ,hispanic_origin,zip_code,dma_code,projection_factor)])
                                             # FYI, this lost nearly 10,000 rows of data
 
-# then merge Zillow data with share_DT
-# shared columns = zip_code, year, month
-key(zillow_DT)
-setkey(share_DT, zip_code, year, month)
-key(share_DT)
+intersect(names(zillow_DT),names(share_DT))
+setkey(share_DT,zip_code,year,month)
+setkey(zillow_DT,zip_code,year,month)
 
 # Not all zip codes have Zillow home values, so need to include all.x=TRUE so data isn't gone
 share_DT <- merge(share_DT, zillow_DT, all.x=TRUE)
@@ -202,7 +189,6 @@ setkey(share_DT, household_code, year, month)
 share_DT[, perc_share := perc_share*100]
 
 
-
 ## Data Description
 
 # Graph (histogram) distribution of private label shares across households per year (mean of mos)
@@ -210,7 +196,6 @@ pl_share_dist <- share_DT[,.(shares = mean(perc_share)), by=.(household_code, ye
 summary(pl_share_dist[,shares])
 sd(pl_share_dist[,shares])
 ggplot(data=pl_share_dist, aes(shares)) + geom_histogram(binwidth = 1)
-
 
 # Evolution of private label shares over time
 
@@ -231,6 +216,7 @@ ggplot(data=share_month, aes(y=shares, x=date)) +
 # a huge drop from Dec 2011 to Jan 2012. Was there some translation error? Maybe when shifting
 # the income level or something? Except the income was shifting by 2 years, and this is a 3-year
 # shift (if that's what it is at all).
+
 
 # Garaudy: I think that there's a delay to when people react to the recession. So even though the official
 # recession ended in 2009, main street was still hurting and people take time to go back to old habits.
@@ -265,5 +251,82 @@ ggplot(data=home_value_zip2[year==2009 & month==6], aes(value_change)) +
 # seems similar enough!
 
 
+### MAIN ANALYSIS
 
-## Main Analysis
+share_DT <- share_DT[complete.cases(share_DT)]
+
+share_DT <- share_DT[, newdate := year*100+month]
+
+# Base Model : Index + Unemployment
+
+fit_base <- felm(perc_share ~ log(income) + unemployed + log(zillow_index), data = share_DT)
+stargazer(fit_base, 
+          title = "Model Estimates",
+          type = "text",
+          column.labels = "Base",
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# Demographics
+
+fit_demo <- felm(perc_share ~ log(income) + unemployed + log(zillow_index)
+                 + education + age + size + has_children + female_head 
+                 + marital_status + race + hispanic_origin, data = share_DT)
+
+stargazer(fit_base, fit_demo,
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Base", "Demo"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# Household Fixed Effects
+
+fit_house <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) | household_code, data = share_DT)
+stargazer(fit_base, fit_house,
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Base", "House"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+
+
+# Recession effect
+share_DT <- share_DT[ ,isrecession := "FALSE" ]
+share_DT <- share_DT[newdate > 200711 & newdate < 200906, isrecession := "TRUE" ]
+
+# Add Trendline
+share_DT[, month_index := 12*(year - min(year)) + month]
+
+# Time Trend Effect
+fit_trend <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) + month_index 
+                              | household_code, data = share_DT)
+
+# Trend + Recession
+fit_trec <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) + isrecession + month_index 
+                   | household_code, data = share_DT)
+
+# Time Fixed Effects
+fit_TE <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) 
+                              | household_code + newdate, data = share_DT)
+
+
+stargazer(fit_base, fit_house, fit_trend, fit_trec, fit_TE, 
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Base", "House", "trend", "recession", "Time Fixed Effects"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+fit_TE_cluster <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) 
+                       |household_code + newdate | 0 | dma_code + year, data = share_DT)
+
+stargazer(fit_TE, fit_TE_cluster,
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Time Fixed Effects", "Cluster SE"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+
