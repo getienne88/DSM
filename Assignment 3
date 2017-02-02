@@ -1,0 +1,212 @@
+---
+title: "Assignment 3 - Private Label Demand"
+author: "Team Revolution (Beslic, Etienne, Riso, Stonehill)"
+date: "2/2/2017"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE)
+```
+
+```{r, include = FALSE}
+
+# NOTE: Starting from a file produced from the earlier version of the code and skipping data setup steps here. 
+
+library(bit64)
+library(data.table)
+library(lfe)
+library(ggplot2)
+library(stargazer)
+load("share_DT.RData")
+```
+
+<br>
+
+**DATA DESCRIPTION**
+<br>
+<br>
+**Distribution of private label shares across households**
+
+```{r echo=FALSE}
+pl_share_dist <- share_DT[,.(shares = mean(perc_share)), by=.(household_code, year)]
+summary(round(pl_share_dist[,shares],1))
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# plot
+ggplot(data=pl_share_dist, aes(shares)) + geom_histogram(binwidth = 1)
+
+```
+
+We see the average household in the data devotes just under 20% of their spending in a year on private label goods. There is a long right tail of households that are more loyal to private label with rare examples of 75% and greater spending on private label goods, however we see that three quarters of observations fall below 25.2% private label spending.
+
+** **
+**Evolution of private label shares over time**
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# calculate weighted average of private label shares per month (across households)
+share_month <- share_DT[,.(shares = weighted.mean(perc_share, projection_factor)), by=.(month, year)]
+# create date variable for X-axis
+share_month[, date := as.Date(ISOdate(year, month, 1))]
+# plot
+ggplot(data=share_month, aes(y=shares, x=date)) +
+  annotate("rect", xmin = as.Date("2007-12-1"), xmax = as.Date("2009-6-1"), # highlights recession
+           ymin = -Inf, ymax = Inf, fill = "lightblue1", alpha = 0.4) +
+  geom_line() +
+  geom_point() +
+  scale_x_date("Year", date_labels = "%Y", date_breaks = "1 years", minor_breaks = NULL)
+```
+
+The chart above shows a notable increase in the average household's monthly private label spending share over the period from 2004 to 2012 (households are weighted by projection factor). Prior to the recession (highlighted in blue) private label share increased from under 18% to near 19% and remained more or less stable. The share jumped sharply in 2008 and remained near the 21% level (with greater variance) through the recession and following years, which perhaps indicates consumers seeking to economize on spending due to uncertainty about employment and other economic prospects. Share very rapidly collapsed in 2012, which may be consistent with households becoming increasingly optimistic about the economy. 
+
+** **
+**Change in home values**
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# calculate percentage change in zillow_index at zip code level
+indexna <- (share_DT[is.na(zillow_index)==TRUE])
+nrow(indexna)/nrow(share_DT)
+
+home_value_zip <- share_DT[,.(index = mean(zillow_index)), by=.(zip_code, year, month)]
+
+setkey(home_value_zip, zip_code, year, month)
+home_value_zip[, thirtysix_mo_lag := shift(index, n=36, type="lag"), by=zip_code]
+home_value_zip[, value_change := (index-thirtysix_mo_lag)/thirtysix_mo_lag]
+
+ggplot(data=home_value_zip[year==2009 & month==6], aes(value_change)) + 
+  geom_histogram(binwidth = .01)
+
+summary(home_value_zip[year==2009 & month==6,value_change])
+```
+
+Above is a histogram of zipcode-level home value changes between June 2006 and June 2009. More than half of zip codes in the data experienced price declines of more than 12%, and a quarter marked losses of 25% or greater.
+
+** **
+<br>
+
+**MAIN ANALYSIS**
+<br>
+<br>
+**Model specifications**
+
+```{r, include = FALSE}
+# Base Model : Index + Unemployment
+fit_base <- felm(perc_share ~ log(income) + unemployed + log(zillow_index), data = share_DT)
+
+# Demographics
+fit_demo <- felm(perc_share ~ log(income) + unemployed + log(zillow_index)
+                 + education + age + size + has_children + female_head 
+                 + marital_status + race + hispanic_origin, data = share_DT)
+
+# Household Fixed Effects
+fit_house <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) 
+                  | household_code, data = share_DT)
+
+# Time controls A - Trend Variable
+fit_trend <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) + month_index 
+                  | household_code, data = share_DT)
+
+# Time Controls B - Trend Variable plus Recession Indicator
+fit_trec <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) + isrecession + month_index 
+                 | household_code, data = share_DT)
+
+# Time Controls C - Year/month fixed effects
+fit_TE <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) 
+               | household_code + newdate, data = share_DT)
+
+# Preferred model with clustered standard errors
+
+fit_TE_cluster <- felm(perc_share ~ log(income) + unemployed + log(zillow_index) 
+                       |household_code + newdate | 0 | dma_code + year, data = share_DT)
+```
+
+**Discussion**
+
+Table 1 below shows the three specifications that do not include time-related variables. Table 2 presents the three different approaches to controlling for time. Table 3 presents our preferred model -- which includes fixed effects for households and year/month -- before and after clustering standard errors, and alongside the original base model, for context.
+
+The models have relatively little explanatory power (as measured by R-squared) until household fixed effects are incorporated, indicating that a large amount of variability in private label share can be explained by features of the households that are not captured by the variables available.
+
+Our key variables of interest - Income, Unemployed, and Zillow index, are highly significant in all specifications, except our preferred (i.e. final) specification, in which standard errors are corrected and the Zillow Index is found to be insignificant. Clustering standard errors is appropriate and, as discussed below, there is intuitive support for why home price is not statistically significant. We chose our model because the results below indicate fixed effects methods are more effective at controlling for the passage of time and for household hetereogeneity than the other methods attempted and the results appear most reasonable.
+
+
+
+```{r, echo=FALSE}
+#Table 1
+stargazer(fit_base, fit_demo, fit_house,
+          title = "Table 1",
+          type = "text",
+          column.labels = c("Base Model", "Demog. Controls", "Household FE"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+
+# Table 2
+stargazer(fit_trend, fit_trec, fit_TE,
+          title = "Table 2",
+          type = "text",
+          column.labels = c("Time Trend", "Time Trend w Recession Ind.", "Year/Month FE"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# Table 3
+stargazer(fit_base, fit_TE, fit_TE_cluster,
+          title = "Table 3",
+          type = "text",
+          column.labels = c("Base Model", "Year/Month FE", "Year/Month FE with Clustered SE"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+```
+
+** **
+**(a) As you add additional controls, some of the estimates (or standard errors) change. Can you provide an explanation for the largest observed change(s)?**
+
+Estimates of the Income effect vary: in the base model the coefficient is close to 2 but it grows to nearly 2.5 when controlling for demographics and shrinks to only 0.3 after we introduce household fixed effects. This suggests there are correlations between covariates that are imporant to properly tease out - for example, it may be that high education (positive coefficient) in the demographics specification is more often observed with high income and conflates the estimates
+
+The esimtate of the coefficient on Unemployment diminishes in magnitude by roughly half, from around .7 to .3, after time effects are incorporated. This may be expected if employment status changes across the time periods at large scale (as occurs in a recession). This is another example of correlation among our covariates.
+
+** **
+**(b) Which of the estimates have a credible causal interpretation? Which controls do you think are necessary before you are convinced that the estimates indeed represent causal effects?**
+
+The estimate on Income is most credibly causal. Our analysis indicates that an increase in household income would lower the private label share of spending, which is intuitive and confirmed in our experience: consumers with more money tend to buy more recognizable or higher quality brands because they are less cost conscious. 
+
+We can contrast this with home value as measured via the Zillow Index. Though consumers with higher value homes are wealthier (all else equal), most homes are financed with substantial debt, and no home represents a liquid asset. Consumers are probably less aware of their overall wealth (and particularly house value) than they are their month-to-month finances when making purchase decisions. There may be associations between average home value in an area and that area's consumer spending habits ("keeping up with the Joneses"), preferences, and even availability of products on the shelf, that would tend to exaggerate our estimate of the Zillow Index effect.
+
+Finally, Unemployment is likely somewhere between Income and Zillow Index in credibility. It seems intuitive that many consumers facing an immediate shock to their income (after losing a job) would economize and attempt to reign in all sorts of spending, including by shifting to private label brands. However, consumers may have purchasing habits that make them less likely to shift much spending due to what some would perceive as a temporary employment setback.
+
+** **
+**(c) What are the implied economic magnitudes of the income, wealth, and employment effects? Consider the effect on the private label share of:**
+
+The economic significance of these variables are limited: all the following changes in covariates are associated with less than a percentage point change in the private label share (measured in percentage points)
+
+```{r, include = FALSE}
+  fit_base$beta
+  fit_base$beta[2]/100*-50
+  fit_base$beta[4]/100*-50
+  
+  fit_TE_cluster$beta
+  fit_TE_cluster$beta[1]/100*-50
+  fit_TE_cluster$beta[3]/100*-50
+```
+
+*• A 50 percent reduction in income*
+
+Base model: 0.949 percentage point increase (-1.898/100 * -50)
+
+Preferred model: 0.15 percentage point increase (-0.317/100 * -50)
+<br>
+<br>
+*• A 50 percent reduction in housing wealth*
+
+Base model: 0.88 percentage point increase (-1.76/100 * -50)
+
+Preferred model: Not statisically significant. [0.23 percentage point increase (-0.450/100 * -50)]
+<br>
+<br>
+*• Becoming unemployed*
+
+Base model: 0.72 percentage point increase
+
+Preferred model: 0.34 percentage point increase
