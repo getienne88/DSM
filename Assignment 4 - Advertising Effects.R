@@ -98,11 +98,9 @@ move <- merge(move, adv_DT[,.(brand_name, dma_code, week_end, grp, adstock)])
 #### When data is recast, each row is a store/week, so either needs to be grp column
 #### both competitor and for own brand or something else I don't know help
 move_cast <- dcast(move, dma_code + store_code_uc + week_end ~ brand_name,
-             value.var = c("quantity", "price", "promotion","adstock"))
-setkey(move, dma_code, store_code_uc, week_end)
-move_cast <- merge(move_cast, move[,.(dma_code, store_code_uc, week_end, grp)])
+             value.var = c("quantity", "price", "promotion","adstock", "grp"))
 
-head(move)
+head(move_cast)
 
 # remove incomplete cases
 move_cast <- move_cast[complete.cases(move_cast)]
@@ -118,9 +116,118 @@ move_cast[, month_index := 12*(year - min(year)) + month]
 
 # DMA chosen: New York City -- dma_code = 501
 ggplot(data=move[dma_code==501], aes(x=week_end, y=grp, color=brand_name)) +
-  geom_area()
+  geom_line() + facet_wrap(~brand_name, scales="free_y")
+
+# DMA chosen: Chicago -- dma_code = 601
+ggplot(data=move[dma_code==602], aes(x=week_end, y=grp, color=brand_name)) +
+  geom_line() + facet_wrap(~brand_name, scales="free_y")
+
+
 
 ## Overall advertising variation
 
 # Create normalized GRP at DMA level
-move_cast[, normalized_grp := 100*grp/mean(grp)]
+move_cast[, normalized_grp := 100*grp_own/mean(grp_own), by=dma_code]
+
+# plot histogram of GRPs at DMA level
+ggplot(data=move_cast, aes(x=normalized_grp)) +
+  geom_histogram(binwidth=45, fill="darkgreen") + 
+  scale_x_continuous(limit=c(-50,1200))
+
+
+
+## Advertising effect estimation
+
+# estimate base model of log(quantity) against price and promotion of own and competitors
+fit_base <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp) + promotion_own +
+                   promotion_comp | month_index + store_code_uc, data=move_cast)
+
+stargazer(fit_base, 
+          title = "Model Estimates",
+          type = "text",
+          column.labels = "Base",
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# add adstock
+fit_adstock <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp) + promotion_own +
+                   promotion_comp + adstock_own + adstock_comp | month_index + 
+                     store_code_uc, data=move_cast)
+
+stargazer(fit_base, fit_adstock, 
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Base", "Adstock"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# remove time
+fit_timeless <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp) + promotion_own +
+                      promotion_comp + adstock_own + adstock_comp | store_code_uc, 
+                     data=move_cast)
+
+stargazer(fit_base, fit_adstock, fit_timeless, 
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Base", "Adstock", "No Time"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# how to interpret x on log y
+# If you have a 10% discount on the product, you have a 3.64% increase in quantity bought
+
+# adstock vs time
+# If you don't control for time, might look like running ads works against you because
+# you happen to be running ads in times that have low sales.
+# By controlling for time, you take that out.
+
+
+
+
+### Border Strategy
+
+
+## merge border names
+
+# change border_name to factor (from character)
+stores[, border_name := as.factor(border_name)]
+
+# merge move and border_name
+move_cast <- merge(move_cast, stores[on_border==TRUE, .(store_code_uc, border_name)], 
+                   allow.cartesian = TRUE)
+
+
+## run regression to see how being on border affects quantity
+
+# Advertising model with store fixed effects and border/time interactions
+fit_border <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp) + promotion_own +
+                      promotion_comp + adstock_own + adstock_comp | month_index + 
+                      store_code_uc + as.factor(month_index):border_name + border_name, 
+                   data=move_cast)
+
+stargazer(fit_adstock, fit_border, 
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Adstock", "Border"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# advertising works better than we'd think when we look at borders. Setting up borders
+# is essentially creating the perfect experiment where everything is the same btwn
+# populations except what advertising is being shown to them.
+
+# standard error clusters
+# Advertising model with store fixed effects and border/time interactions
+fit_cluster <- felm(log(1+quantity_own) ~ log(price_own) + log(price_comp) + promotion_own +
+                     promotion_comp + adstock_own + adstock_comp | month_index + 
+                     store_code_uc + as.factor(month_index):border_name + border_name
+                   |0| dma_code, data=move_cast)
+
+stargazer(fit_adstock, fit_border, fit_cluster, 
+          title = "Model Estimates",
+          type = "text",
+          column.labels = c("Adstock", "Border", "SE Cluster"),
+          dep.var.labels.include = FALSE,
+          model.numbers = FALSE)
+
+# I didn't run this yet because ain't nobody got time for that
