@@ -182,8 +182,14 @@ stargazer(fit_base, fit_adstock, fit_timeless,
           model.numbers = FALSE)
 ```
 
-Increase in promotion by 0.1 = increase in sales quantity by 3.6%. Time Fixed effects allows you to discern seasonal trends that may be correlated with advertising. If you don't control for time, it might look like your ads don't work even though you may just be running ads at times that have low sales.
-
+In all regression specifications, the variables we include are highly statistically significantly associated with Coca-Cola sales quantity. Most of the coefficients we estimate are relatively stable across all three specifications. 
+The exceptions to this stability appear in Model 2 and Model 3, which removes month/fixed effects. Relative to Model 2, Model 3 estimates a more powerful effect for the competitor price variable, and opposite signs for the ad stock variables (both own and competitor). 
+From this we infer that the time fixed effects allow us to discern seasonal or annual trends that may be correlated with advertising. 
+Without controlling for time, it appears that Coca Cola’s ads were associated with decreased sales, when the company may just often run ads in months that “naturally” tend have low sales.
+To interpret the magnitude of these effects, taking Model 2 we see that a 1% increase in the price of Coke is associated with a 3.4% decrease in sales, while the same increase in competitors’ prices is associated with a 0.4% Coke sales increase.
+The promotion variable, which falls between 0 and 1, tells us that a 10 percentage point Coke promotion is associated with 3.6% greater sales. Competitor promotions also correspond to increased Coke sales, though with smaller magnitude.
+The ad stock variable is in units that are difficult to interpret but, as discussed above, in Model 2 we see that recent advertising by Coke tends to increase sales, and recent advertising by competitors decreases Coke sales. 
+It is worth noting that competitor ad stock tends to be nearly an order of magnitude greater than Coke ad stock on average (e.g. in New York 50.8 vs. 5.6).
 
 ** **
 **Border Strategy**
