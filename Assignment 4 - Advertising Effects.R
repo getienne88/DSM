@@ -182,8 +182,14 @@ stargazer(fit_base, fit_adstock, fit_timeless,
           model.numbers = FALSE)
 ```
 
-Increase in promotion by 0.1 = increase in sales quantity by 3.6%. Time Fixed effects allows you to discern seasonal trends that may be correlated with advertising. If you don't control for time, it might look like your ads don't work even though you may just be running ads at times that have low sales.
-
+Similar to the Coke regressions, across the three Charmin regression specifications the variables are all highly statistically significant and largely stable. 
+Here the only sign that changes between specifications is ad stock competitor moving from negative to positive from Model 2 to Model 3. 
+As with the Coke analysis, this suggests the time fixed effect is important in controlling for outside factors that correlate with sales quantity and periods of advertising, however the relationship is somewhat less pronounced in this product (note the sign on Charmin’s own ad stock is consistently positive across Model 2 and Model 3).
+From these results we see toilet paper consumers are notably less price elastic than soda consumers (in the baseline model, for example, they buy only 1.37% less quantity when faced with a 1% higher price, all else equal). 
+The coefficient on Charmin’s own promotions is more than double the coefficient estimated in the Coke analysis, indicating that sales promotions are relatively more important in driving sales for Charmin brand. 
+Interesting, competitor promotions have a smaller effect on main brand sales than what is estimated in the soda market. 
+This, along with the lower price elasticity estimates, may indicate toilet paper consumers are more brand loyal.
+The coefficient estimates on ad stock are in the same order of magnitude as the advertising effects estimated in the soda market and show the expected signs in Model 2.
 
 ** **
 **Border Strategy**
